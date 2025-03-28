@@ -4,6 +4,11 @@ import fs from 'fs';
 import path from 'path';
 import simplify from 'simplify-js'; // Ensure you have created src/types/declarations.d.ts
 
+// --- Import Hershey Data ---
+// Use 'require' for CommonJS. Adjust the path as needed.
+const FONT_HERSHEY = require('../../fonts/hershey-js/hershey.data.js');
+// --- End Import ---
+
 // Helper Point class for vector math within this script
 class Point {
     constructor(public x: number = 0, public y: number = 0) {}
@@ -598,6 +603,68 @@ function generateSimpleFallbackSpine(path: opentype.Path, numPoints: number): Po
     }
 }
 
+// --- Helper: Decode Hershey String to Paths ---
+function hersheyDecode(char: string): { x: number, y: number }[][] {
+    const fontData = FONT_HERSHEY.DATA;
+    const cmap = FONT_HERSHEY.SIMPLEX;
+    
+    // Get the character index in the font
+    const charIndex = char.charCodeAt(0) - 32;
+    if (charIndex < 0 || charIndex >= 96) return [];
+    
+    // Get the data index for this character
+    const dataIndex = cmap(charIndex);
+    if (!dataIndex) return [];
+    
+    // Get the Hershey string for this character
+    const hersheyStr = fontData[dataIndex.toString()];
+    if (!hersheyStr) return [];
+    
+    // Parse the Hershey string
+    const parts = hersheyStr.trim().split(' ');
+    if (parts.length < 2) return [];
+    
+    // First part is the number of vertices
+    const numVertices = parseInt(parts[0]);
+    if (numVertices < 0) return [];
+    
+    // Second part is the left and right bounds
+    const leftBound = parseInt(parts[1][0]);
+    const rightBound = parseInt(parts[1][1]);
+    
+    // The rest of the string contains the vertices
+    const vertices: { x: number, y: number }[] = [];
+    let currentPath: { x: number, y: number }[] = [];
+    const paths: { x: number, y: number }[][] = [];
+    
+    for (let i = 2; i < parts.length; i++) {
+        const part = parts[i];
+        if (part === 'R') {
+            // Move without drawing
+            if (currentPath.length > 0) {
+                paths.push(currentPath);
+                currentPath = [];
+            }
+            continue;
+        }
+        
+        // Parse vertex coordinates
+        const x = parseInt(part[0]) - leftBound;
+        const y = parseInt(part[1]) - rightBound;
+        
+        if (isNaN(x) || isNaN(y)) continue;
+        
+        currentPath.push({ x, y });
+    }
+    
+    // Add the last path if it exists
+    if (currentPath.length > 0) {
+        paths.push(currentPath);
+    }
+    
+    return paths;
+}
+
 // --- Main Generation Logic ---
 async function generateShapes() {
     console.log(`Loading font: ${FONT_PATH}`);
@@ -637,17 +704,64 @@ async function generateShapes() {
         let isLoop = false;
 
         if (FALLBACK_CHARS.has(char)) {
-            console.log(`  - Using fallback generation for '${char}'`);
-            const fallbackPointsLarge = generateSimpleFallbackSpine(path, FINAL_SPINE_POINTS);
-            if (fallbackPointsLarge.length < 2) { console.warn(`  - Fallback failed: '${char}'`); continue; }
+            console.log(`  - Using Hershey font fallback for '${char}'`);
+            const hersheyPaths = hersheyDecode(char);
+            if (hersheyPaths.length === 0) {
+                console.warn(`  - Hershey fallback failed: '${char}'`);
+                continue;
+            }
 
-            // Downscale fallback points
-            const downScaleFactor = TARGET_HEIGHT / LARGE_REF_SIZE;
-            finalPoints = fallbackPointsLarge.map(p => ({
-                x: parseFloat((p.x * downScaleFactor).toFixed(2)),
-                y: parseFloat((p.y * downScaleFactor).toFixed(2))
+            // Use the first path (main contour) from Hershey data
+            const hersheyPoints = hersheyPaths[0];
+            
+            // Scale the points to match our target height
+            const bounds = hersheyPoints.reduce((acc, p) => ({
+                minX: Math.min(acc.minX, p.x),
+                maxX: Math.max(acc.maxX, p.x),
+                minY: Math.min(acc.minY, p.y),
+                maxY: Math.max(acc.maxY, p.y)
+            }), { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity });
+
+            const width = bounds.maxX - bounds.minX;
+            const height = bounds.maxY - bounds.minY;
+            const scale = TARGET_HEIGHT / Math.max(width, height);
+
+            // Scale points first
+            const scaledPoints = hersheyPoints.map(p => ({
+                x: (p.x - bounds.minX) * scale,
+                y: (p.y - bounds.minY) * scale
             }));
-            isLoop = false; // Fallback is never a loop
+
+            // Simplify with a very small tolerance suitable for the final scale
+            const finalToleranceFallback = 0.1; // Very small tolerance for final scale
+            console.log(`  [Fallback] Simplifying ${scaledPoints.length} points with tolerance ${finalToleranceFallback.toFixed(4)}`);
+            const simplifiedPoints = simplify(scaledPoints, finalToleranceFallback, true);
+
+            if (simplifiedPoints.length < 2) {
+                console.warn(`  - Fallback failed after simplification: '${char}'`);
+                continue;
+            }
+
+            // Format final points with fixed precision
+            finalPoints = simplifiedPoints.map(p => ({
+                x: parseFloat(p.x.toFixed(2)),
+                y: parseFloat(p.y.toFixed(2))
+            }));
+
+            // Check if the path is a loop (if first and last points are close)
+            if (finalPoints.length > 2) {
+                const first = finalPoints[0];
+                const last = finalPoints[finalPoints.length - 1];
+                const closeThresholdSq = (TARGET_HEIGHT * 0.1) ** 2;
+                const dx = first.x - last.x;
+                const dy = first.y - last.y;
+                isLoop = (dx*dx + dy*dy) < closeThresholdSq;
+                if (isLoop) {
+                    finalPoints.pop();
+                }
+            } else {
+                isLoop = false;
+            }
 
         } else {
             // --- Proceed with Midpoint Averaging & Resampling ---

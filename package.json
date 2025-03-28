@@ -5,9 +5,11 @@
   "private": true,
   "type": "commonjs",
   "scripts": {
-    "generate-shapes": "ts-node ./scripts/generateShapes.ts",
-    "build": "npm run generate-shapes && tsc",
-    "start": "http-server . -p 8080 -c-1"
+    "compile-script": "tsc -p tsconfig.scripts.json",
+    "generate-shapes": "npm run compile-script && node ./dist/scripts/generateShapes.js",
+    "compile-app": "tsc",
+    "build": "npm run generate-shapes && npm run compile-app",
+    "start": "http-server ./dist -p 8080 -c-1"
   },
   "dependencies": {
     "simplify-js": "^1.2.4"

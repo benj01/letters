@@ -1,6 +1,6 @@
 {
     "compilerOptions": {
-        "target": "ES2016",
+        "target": "ES2017",
         "module": "CommonJS",
         "outDir": "./dist/scripts",
         "rootDir": "./scripts",
@@ -10,5 +10,6 @@
         "forceConsistentCasingInFileNames": true,
         "moduleResolution": "node"
     },
-    "include": ["scripts/**/*"]
+    "include": ["./scripts/**/*.ts"],
+    "exclude": ["node_modules"]
 } 
