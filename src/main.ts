@@ -1,46 +1,72 @@
 // src/main.ts
+import { Vec2 } from './physicsCore.js';
 import { PhysicsEngine } from './physicsEngine.js';
 import { Renderer } from './renderer.js';
 import { letterShapes } from './letterShapes.js';
-import { Vec2 } from './physicsCore.js';
 
 const canvasId = 'physicsCanvas';
 const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
-if (!canvas) throw new Error(`Canvas element with id "${canvasId}" not found.`);
+if (!canvas) {
+    throw new Error(`Canvas with id '${canvasId}' not found`);
+}
 
-const width = 800;
-const height = 600;
+// --- Initialize Canvas ---
+const width = window.innerWidth;
+const height = window.innerHeight;
 canvas.width = width;
 canvas.height = height;
 
+// --- Initialize Physics Engine ---
 const engine = new PhysicsEngine(width, height);
-const renderer = new Renderer(canvasId, 12); // Letter stroke width = 12px
-
-// --- Simulation Parameters ---
 engine.gravity = new Vec2(0, 400);
 engine.solverIterations = 6;
 engine.bounceFactor = 0.3;
 engine.drag = 0.02;
 
-// --- Create Letter Bodies ---
+// --- Initialize Renderer ---
+const renderer = new Renderer(canvasId, 12); // Letter stroke width = 12px
+
+// --- Character Selection ---
+// Curved characters (should maintain their shape well)
+const CURVED_CHARS = ['O', 'S', 'C', 'G'];
+// Straight/corner characters (using fallback generation)
+const STRAIGHT_CHARS = ['A', 'E', 'F', 'H', 'I', 'K', 'L', 'M', 'N', 'T', 'V', 'W', 'X', 'Y', 'Z'];
+// Mixed characters (complex shapes)
+const MIXED_CHARS = ['B', 'D', 'P', 'Q', 'R', 'J', 'U'];
+// Other characters (special cases)
+const OTHER_CHARS = ['$', '?', '!', '+', '-', '='];
+
+// Select a subset of characters to demonstrate different behaviors
+const lettersToCreate = [
+    ...CURVED_CHARS,           // All curved chars
+    ...STRAIGHT_CHARS.slice(0, 5),  // First 5 straight chars
+    ...MIXED_CHARS.slice(0, 3),     // First 3 mixed chars
+    ...OTHER_CHARS.slice(0, 2)      // First 2 other chars
+];
+
+// --- Letter Creation ---
 const startY = 50;
-const spacingX = 80;
+const LETTER_SPACING = 80; // Reduced spacing to fit more letters
 let currentX = 50;
 
-const lettersToCreate = ['L', 'O', 'C', 'S', 'I'];
-
-lettersToCreate.forEach(char => {
-    if (letterShapes[char]) {
-        const shape = letterShapes[char];
-        engine.createSoftBody(
-            `${char}-${currentX}`, // Unique ID
-            shape.points.map(p => new Vec2(p.x, p.y)), // Convert points to Vec2
-            new Vec2(currentX, startY),
-            shape.isLoop,
-            shape.pinnedIndices || []
-        );
-        currentX += spacingX;
+lettersToCreate.forEach((char, index) => {
+    const shapeData = letterShapes[char];
+    if (!shapeData) {
+        console.warn(`No shape data found for character: ${char}`);
+        return;
     }
+
+    const uniqueId = `letter-${char}-${index}`;
+    const points = shapeData.points.map(p => new Vec2(p.x, p.y));
+    engine.createSoftBody(
+        uniqueId,
+        points,
+        new Vec2(currentX, startY),
+        shapeData.isLoop,
+        shapeData.pinnedIndices || []
+    );
+    currentX += LETTER_SPACING;
+    console.log(`Created ${char} with ${points.length} points. Loop: ${shapeData.isLoop}`);
 });
 
 // --- Mouse Interaction ---

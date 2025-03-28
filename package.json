@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Soft body letter simulation using TypeScript and Canvas",
   "private": true,
+  "type": "commonjs",
   "scripts": {
     "generate-shapes": "ts-node ./scripts/generateShapes.ts",
     "build": "npm run generate-shapes && tsc",

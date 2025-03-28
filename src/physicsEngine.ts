@@ -32,9 +32,10 @@ export class PhysicsEngine {
     constructor(width: number, height: number) {
         // Add a small padding to the bounds
         const padding = 5;
+        const bottomPadding = 100; // Extra padding at the bottom to move floor up
         this.worldBounds = {
             min: new Vec2(padding, padding),
-            max: new Vec2(width - padding, height - padding)
+            max: new Vec2(width - padding, height - bottomPadding)
         };
     }
 
